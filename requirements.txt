@@ -1,0 +1,19 @@
+# Core dependencies for solver and sampling study
+numpy>=2.0.0,<3.0.0
+pandas>=2.0.0,<3.0.0
+
+# Graph libraries
+networkx>=3.0.0,<4.0.0
+python-igraph>=1.0.0,<2.0.0
+
+# Geospatial data handling
+geopandas>=1.0.0,<2.0.0
+shapely>=2.0.0,<3.0.0
+pyproj>=3.0.0,<4.0.0
+
+# Progress bar
+tqdm>=4.65.0,<5.0.0
+
+# Optional: for data file handling (if needed)
+# openpyxl>=3.0.0,<4.0.0  # For Excel files
+# ezdxf>=1.0.0,<2.0.0     # For DXF files
