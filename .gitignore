@@ -37,14 +37,7 @@ ENV/
 .DS_Store
 Thumbs.db
 
-# Data files - garder les fichiers .pkl dans Data/
-# On garde les fichiers .pkl dans le dossier Data/ pour le cache
-!Data/*.pkl
-!Data/*.pickle
-# Ignorer les autres fichiers de données ailleurs
-*.pkl
-*.pickle
-!Data/
+
 
 # Logs
 *.log
