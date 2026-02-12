@@ -34,5 +34,5 @@ plt.xlabel("Longitude / X")
 plt.ylabel("Latitude / Y")
 plt.legend()
 plt.grid(True, linestyle='--', alpha=0.5)
-
+plt.savefig("plot_graph_data.png", dpi=300)
 plt.show()
