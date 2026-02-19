@@ -1,17 +1,18 @@
 import pickle
 import matplotlib.pyplot as plt
 import geopandas as gpd
+import graph_data
 
 # 1. Load the data
-file_path = "Capstone_M2DS_26/Data/graph_data_exemple.pkl"
+file_path = "Capstone_M2DS_26/dataclass/graph_data_exemple.pkl"
 with open(file_path, "rb") as f:
-    graph_data = pickle.load(f)
+    graph = pickle.load(f)
 
 # 2. Setup the plot
 fig, ax = plt.subplots(figsize=(10, 10))
 
 # 3. Plot Segments (the lines/edges)
-graph_data.gdf_segments.plot(
+graph.gdf_segments.plot(
     ax=ax, 
     color='gray', 
     linewidth=1, 
@@ -20,7 +21,7 @@ graph_data.gdf_segments.plot(
 )
 
 # 4. Plot Nodes (the points/vertices)
-graph_data.gdf_nodes.plot(
+graph.gdf_nodes.plot(
     ax=ax, 
     color='red', 
     markersize=5, 
