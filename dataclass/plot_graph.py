@@ -8,24 +8,27 @@ file_path = "Capstone_M2DS_26/dataclass/graph_data_exemple.pkl"
 with open(file_path, "rb") as f:
     graph = pickle.load(f)
 
+
+print(graph.df_cables[graph.df_cables["tenant"]==14])
+
 # 2. Setup the plot
 fig, ax = plt.subplots(figsize=(10, 10))
 
 # 3. Plot Segments (the lines/edges)
 graph.gdf_segments.plot(
-    ax=ax, 
-    color='gray', 
-    linewidth=1, 
-    alpha=0.7, 
+    ax=ax,
+    color='gray',
+    linewidth=1,
+    alpha=0.7,
     label='Segments'
 )
 
 # 4. Plot Nodes (the points/vertices)
 graph.gdf_nodes.plot(
-    ax=ax, 
-    color='red', 
-    markersize=5, 
-    zorder=3, 
+    ax=ax,
+    color='red',
+    markersize=5,
+    zorder=3,
     label='Nodes'
 )
 
