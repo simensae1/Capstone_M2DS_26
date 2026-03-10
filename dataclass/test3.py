@@ -8,11 +8,13 @@ import graph_data
 import networkx as nx
 from shapely.geometry import Point
 from shapely.ops import nearest_points
+import itertools
 
 # 1. Load the data
 file_path = "Capstone_M2DS_26/dataclass/graph_data_exemple.pkl"
 with open(file_path, "rb") as f:
     graph_data1 = pickle.load(f)
+
 
 class ACO_Router:
     def __init__(self, graph_data1, alpha=1.0, beta=2.0, rho=0.1, Q=100, gamma=1.5):
@@ -26,7 +28,7 @@ class ACO_Router:
         self.edges = self._build_adjacency()
         self.pheromones = {edge: 1.0 for edge in self.edges.keys()}
         self.angle_map = self._build_angle_map()
-        
+
         # Garde en mémoire les nœuds appartenant déjà au réseau de chaque source
         self.established_nodes = {}
 
@@ -48,19 +50,19 @@ class ACO_Router:
 
             if source not in self.established_nodes:
                 self.established_nodes[source] = {source}
-                
+
             # Vérification de connectivité théorique
             can_reach = any(nx.has_path(G_check, target, est_node) 
                             for est_node in self.established_nodes[source])
-            
+
             if not can_reach:
                 print(f"❌ ABANDON : Source {source} inaccessible pour {target}. Ajout à la blacklist.")
-                failed_sources.add(pair) # On blacklist la source
+                failed_sources.add(pair)  # On blacklist la source
                 continue
 
             print(f"Routage : Machine {target} -> Réseau de la Source {source}...")
             target_set = self.established_nodes[source]
-            
+
             best_path, best_dist = self.run_aco(target, target_set, n_ants, n_iterations)
 
             if best_path:
@@ -96,7 +98,7 @@ class ACO_Router:
 
     def _select_next_node(self, prev_node, current_node, gamma=1.5):
         neighbors = self._get_neighbors(current_node)
-        
+
         # 1. Empêcher le demi-tour IMMÉDIAT (ping-pong) sauf si c'est une impasse
         candidates = [n for n in neighbors if n[0] != prev_node]
         if not candidates:
@@ -133,10 +135,10 @@ class ACO_Router:
     def run_aco(self, start_node, target_set, n_ants, n_iterations):
         best_path = None
         best_dist = float('inf')
-        
+
         if start_node in target_set:
             return [start_node], 0.0
-            
+
         for _ in range(n_iterations):
             all_paths = []
             for _ in range(n_ants):
@@ -148,7 +150,6 @@ class ACO_Router:
                         best_dist = dist
                         best_path = path
             self._update_pheromones(all_paths)
-            
         return best_path, best_dist
 
     def _construct_path(self, start, target_set):
@@ -162,23 +163,22 @@ class ACO_Router:
         for _ in range(max_steps):
             # La notion de "visited" est supprimée ici pour permettre l'exploration totale
             next_node = self._select_next_node(prev, current)
-            
+
             if next_node is None:
                 return None
-            
+
             # 2. LOOP ERASURE : Si la fourmi croise son propre chemin, on coupe la boucle
             if next_node in path:
                 loop_start_index = path.index(next_node)
-                path = path[:loop_start_index + 1] # On garde le chemin jusqu'au point d'intersection
+                path = path[:loop_start_index + 1]  # On garde le chemin jusqu'au point d'intersection
                 current = next_node
                 prev = path[-2] if len(path) > 1 else None
             else:
                 path.append(next_node)
                 if next_node in target_set:
-                    return path # Cible atteinte
+                    return path  # Cible atteinte
                 prev = current
                 current = next_node
-                
         return None
 
     def _calculate_path_length(self, path):
@@ -208,7 +208,7 @@ for _, row in graph_data1.gdf_segments.iterrows():
 # Extraire le plus grand composant connexe (pour s'assurer que les chemins sont possibles)
 largest_cc = max(nx.connected_components(G), key=len)
 valid_node_ids = set(largest_cc)
-print(f"🌍 Plus grand composant connexe identifié : {len(valid_node_ids)} nœuds utiles sur le réseau total.")
+print(f"Plus grand composant connexe identifié : {len(valid_node_ids)} nœuds utiles sur le réseau total.")
 
 # 2. Nettoyage initial (suppression des NaN)
 df_cables_clean = graph_data1.df_cables.dropna(subset=['tenant', 'aboutissant'])
@@ -230,7 +230,7 @@ for _, row in df_final.iterrows():
     connection_pairs.append((int(row['tenant']), int(row['aboutissant'])))
 
 print(f"✅ Prêt pour le routage de {len(connection_pairs)} connexions valides.")
-
+"""
 # 5. Lancer le routage global
 router = ACO_Router(graph_data1, alpha=1.5, beta=1.0, gamma=2.0)
 all_routes = router.run_global_routing(connection_pairs)
@@ -243,6 +243,7 @@ for path in all_routes.values():
 
 total_dist = sum(router.edges[e] for e in unique_edges)
 print(f"\n📏 Longueur totale du câble utilisé (mutualisé) : {total_dist:.2f} m")
+"""
 
 
 def evaluate_routing_performance(all_routes, router):
@@ -290,6 +291,8 @@ def evaluate_routing_performance(all_routes, router):
     }
 
 # 7. Affichage
+
+
 def plot_global_network(graph_data1, all_routes, connection_pairs):
     fig, ax = plt.subplots(figsize=(15, 10))
     
@@ -329,7 +332,93 @@ def plot_global_network(graph_data1, all_routes, connection_pairs):
     plt.savefig("network_sources_machines.png", dpi=300, bbox_inches='tight')
     plt.show()
 
+"""
 # Appel de la fonction mis à jour
 plot_global_network(graph_data1, all_routes, connection_pairs)
+"""
 
-plot_global_network(graph_data1, all_routes)
+
+def run_aco_grid_search(graph_data1, subset_pairs, param_grid):
+    """
+    Executes a grid search over specified ACO parameters and returns a DataFrame of results.
+    """
+    results = []
+
+    # Extract keys and generate all combinations of the parameter lists
+    keys, values = zip(*param_grid.items())
+    param_combinations = [dict(zip(keys, v)) for v in itertools.product(*values)]
+
+    print(f"Starting Grid Search: {len(param_combinations)} total combinations to test.\n")
+
+    for i, params in enumerate(param_combinations):
+        print(f"--- Run {i+1}/{len(param_combinations)} | Testing Params: {params} ---")
+
+        # Isolate initialization params vs runtime params
+        alpha = params.get('alpha', 1.0)
+        beta = params.get('beta', 2.0)
+        gamma = params.get('gamma', 1.5)
+        n_ants = 3
+        n_iterations = 5
+
+        # 1. Initialize the Router with current grid parameters
+        router = ACO_Router(graph_data1, alpha=alpha, beta=beta, gamma=gamma)
+
+        # 2. Run the routing on the subset of pairs
+        all_routes = router.run_global_routing(subset_pairs, n_ants=n_ants, n_iterations=n_iterations)
+
+        # 3. Evaluate performance
+        metrics = evaluate_routing_performance(all_routes, router)
+
+        # 4. Calculate success rate (how many pairs were successfully routed)
+        success_rate = len(all_routes) / len(subset_pairs) if len(subset_pairs) > 0 else 0
+
+        # 5. Store the results
+        run_result = {**params, **metrics, "Success_Rate": round(success_rate, 2)}
+        results.append(run_result)
+
+    # Convert to a DataFrame for easy sorting and visualization
+    df_results = pd.DataFrame(results)
+    return df_results
+
+# Define the parameter grid
+# Be careful: adding too many values will exponentially increase runtime!
+
+
+param_grid = {
+    'alpha': [1.0, 1.5],          # Pheromone importance
+    'beta': [1.0, 2.0],           # Distance importance
+    'gamma': [1.0, 2.0],          # Angle/Straightness importance
+}
+
+# Run the Grid Search
+df_grid_results = run_aco_grid_search(graph_data1, connection_pairs, param_grid)
+
+# --- ANALYZE RESULTS ---
+
+print("\n GRID SEARCH TERMINE ! Voici les 5 meilleures configurations (triées par coût d'infrastructure le plus bas) :")
+# Sort by the lowest total copper length, then by highest success rate
+df_sorted = df_grid_results.sort_values(by=['Total_Copper_Length', 'Success_Rate'], ascending=[True, False])
+print(df_sorted.head().to_string(index=False))
+
+# Optional: Save results to CSV for external analysis
+df_sorted.to_csv("aco_grid_search_results.csv", index=False)
+
+# --- VISUALIZE THE BEST RUN ---
+# Automatically extract the best parameters and plot that specific network
+best_params = df_sorted.iloc[0]
+print(f"\n Génération du tracé pour la meilleure configuration : {best_params.to_dict()}")
+
+best_router = ACO_Router(
+    graph_data1,
+    alpha=best_params['alpha'],
+    beta=best_params['beta'],
+    gamma=best_params['gamma']
+)
+
+best_routes = best_router.run_global_routing(
+    connection_pairs,
+    n_ants=3,
+    n_iterations=5
+)
+
+plot_global_network(graph_data1, best_routes, connection_pairs)
