@@ -3,11 +3,7 @@ import pandas as pd
 import random
 import pickle
 import matplotlib.pyplot as plt
-import geopandas as gpd
-import graph_data
 import networkx as nx
-from shapely.geometry import Point
-from shapely.ops import nearest_points
 import itertools
 
 # 1. Load the data
@@ -52,7 +48,7 @@ class ACO_Router:
                 self.established_nodes[source] = {source}
 
             # Vérification de connectivité théorique
-            can_reach = any(nx.has_path(G_check, target, est_node) 
+            can_reach = any(nx.has_path(G_check, target, est_node)
                             for est_node in self.established_nodes[source])
 
             if not can_reach:
@@ -103,7 +99,7 @@ class ACO_Router:
         candidates = [n for n in neighbors if n[0] != prev_node]
         if not candidates:
             # Impasse : on autorise la fourmi à revenir sur ses pas
-            candidates = neighbors 
+            candidates = neighbors
 
         probabilities = []
         for neighbor, dist in candidates:
@@ -254,21 +250,22 @@ def evaluate_routing_performance(all_routes, router):
     for path in all_routes.values():
         for i in range(len(path) - 1):
             unique_edges.add(tuple(sorted((path[i], path[i+1]))))
-    
+
     total_infrastructure_length = sum(router.edges[e] for e in unique_edges)
 
     # 2. COÛT DE SINUOSITÉ (Efficacité individuelle des chemins)
     # Ratio : Longueur parcourue / Distance à vol d'oiseau (ou Dijkstra si disponible)
     sinuosity_scores = []
     for (src, tgt), path in all_routes.items():
-        if len(path) < 2: continue
-        
+        if len(path) < 2:
+            continue
+
         actual_dist = router._calculate_path_length(path)
         # Approximation simple par distance euclidienne entre points de départ/arrivée
         node_start = router.graph.gdf_nodes.set_index('node_id').loc[path[0], 'geometry']
         node_end = router.graph.gdf_nodes.set_index('node_id').loc[path[-1], 'geometry']
         direct_dist = node_start.distance(node_end)
-        
+
         if direct_dist > 0:
             sinuosity_scores.append(actual_dist / direct_dist)
 
@@ -294,7 +291,7 @@ def evaluate_routing_performance(all_routes, router):
 
 def plot_global_network(graph_data1, all_routes, connection_pairs):
     fig, ax = plt.subplots(figsize=(15, 10))
-    
+
     # 1. Dessiner le fond de carte (tous les segments possibles)
     graph_data1.gdf_segments.plot(ax=ax, color='black', linewidth=0.2, alpha=0.3, label='Segments possibles')
 
@@ -302,7 +299,7 @@ def plot_global_network(graph_data1, all_routes, connection_pairs):
     for (src, tgt), path in all_routes.items():
         if not path or len(path) < 2:
             continue
-            
+
         path_edges = [tuple(sorted((path[i], path[i+1]))) for i in range(len(path)-1)]
         mask = graph_data1.gdf_segments.apply(
             lambda row: tuple(sorted((int(row['i']), int(row['j'])))) in path_edges, axis=1
@@ -327,9 +324,10 @@ def plot_global_network(graph_data1, all_routes, connection_pairs):
     plt.legend(loc='upper right')
     plt.xlabel("Longitude")
     plt.ylabel("Latitude")
-    
+
     plt.savefig("network_sources_machines.png", dpi=300, bbox_inches='tight')
     plt.show()
+
 
 """
 # Appel de la fonction mis à jour
