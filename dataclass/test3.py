@@ -158,8 +158,7 @@ class ACO_Router:
         current = start
 
         # Limite élargie car la fourmi peut faire des détours avant d'effacer ses boucles
-        max_steps = len(self.edges) * 10 
-
+        max_steps = len(self.edges) * 100
         for _ in range(max_steps):
             # La notion de "visited" est supprimée ici pour permettre l'exploration totale
             next_node = self._select_next_node(prev, current)
@@ -357,8 +356,8 @@ def run_aco_grid_search(graph_data1, subset_pairs, param_grid):
         alpha = params.get('alpha', 1.0)
         beta = params.get('beta', 2.0)
         gamma = params.get('gamma', 1.5)
-        n_ants = 3
-        n_iterations = 5
+        n_ants = 20
+        n_iterations = 35
 
         # 1. Initialize the Router with current grid parameters
         router = ACO_Router(graph_data1, alpha=alpha, beta=beta, gamma=gamma)
@@ -417,8 +416,8 @@ best_router = ACO_Router(
 
 best_routes = best_router.run_global_routing(
     connection_pairs,
-    n_ants=3,
-    n_iterations=5
+    n_ants=20,
+    n_iterations=35
 )
 
 plot_global_network(graph_data1, best_routes, connection_pairs)
