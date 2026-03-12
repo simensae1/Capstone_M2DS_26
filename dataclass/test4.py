@@ -23,7 +23,7 @@ except FileNotFoundError:
 # 2. ACO ROUTER CLASS
 # ==========================================
 class ACO_Router:
-    def __init__(self, graph_data1, alpha=1.4, beta=0.8, rho=0.01, Q=100, gamma=2.0):
+    def __init__(self, graph_data1, alpha=0.8, beta=2.8, rho=0.1, Q=100, gamma=2.0):
         self.graph = graph_data1
         self.alpha = alpha
         self.beta = beta
@@ -38,9 +38,9 @@ class ACO_Router:
         # Garde en mémoire les nœuds appartenant déjà au réseau de chaque source
         self.established_nodes = {}
 
-    def run_global_routing(self, connection_pairs, n_ants=10, n_iterations=15, visualize_progress=False):
+    def run_global_routing(self, connection_pairs, n_ants=10, n_iterations=15, visualize_progress=True):
         global_network = {}
-        failed_sources = set()  # Pour stocker les sources qui ne fonctionnent pas
+        failed_sources = set()
 
         G_check = nx.Graph()
         for edge, dist in self.edges.items():
@@ -50,42 +50,44 @@ class ACO_Router:
             source = pair[0]
             target = pair[1]
 
-            # Si la source est dans la liste noire, on passe directement à la suite
             if pair in failed_sources:
                 continue
 
             if source not in self.established_nodes:
                 self.established_nodes[source] = {source}
 
-            # Vérification de connectivité théorique
             can_reach = any(nx.has_path(G_check, target, est_node)
                             for est_node in self.established_nodes[source])
 
             if not can_reach:
                 print(f"❌ ABANDON : Source {source} inaccessible pour {target}. Ajout à la blacklist.")
-                failed_sources.add(pair)  # On blacklist la source
+                failed_sources.add(pair)
                 continue
 
-            print(f"Routage : Machine {target} -> Réseau de la Source {source}...")
-            target_set = self.established_nodes[source]
+            print(f"Routage : Machine {target} -> Source {source} (Câblage dédié)...")
+            
+            # --- THE CRITICAL CHANGE ---
+            # We no longer use self.established_nodes[source] as the target set.
+            # We force the ant to route ALL the way back to the source node.
+            target_set = {source} 
 
-            # Pass the visualization flag down to the ACO run
             best_path, best_dist = self.run_aco(target, target_set, n_ants, n_iterations, visualize=visualize_progress)
 
             if best_path:
                 global_network[(source, target)] = best_path
                 self._apply_heavy_reinforcement(best_path)
+                # We still update established_nodes so your visualizer knows which trenches are active
                 self.established_nodes[source].update(best_path)
             else:
                 print(f"⚠️ ÉCHEC ACO : Pair {pair} abandonnée.")
-                failed_sources.add(pair)  # On blacklist la source ici aussi
+                failed_sources.add(pair)
 
         return global_network
 
     def _apply_heavy_reinforcement(self, path):
         for i in range(len(path) - 1):
             edge = tuple(sorted((path[i], path[i+1])))
-            self.pheromones[edge] += 1000.0
+            self.pheromones[edge] += 5.0
 
     def _build_adjacency(self):
         adj = {}
@@ -171,7 +173,7 @@ class ACO_Router:
         current = start
 
         # Limite élargie car la fourmi peut faire des détours avant d'effacer ses boucles
-        max_steps = len(self.edges) * 100
+        max_steps = len(self.edges) * 200
         for _ in range(max_steps):
             next_node = self._select_next_node(prev, current)
 
@@ -274,13 +276,21 @@ class ACO_Router:
 # 3. HELPER FUNCTIONS
 # ==========================================
 def evaluate_routing_performance(all_routes, router):
+    total_dedicated_cable_length = 0
     unique_edges = set()
+
     for path in all_routes.values():
+        # 1. Add up the total length of every individual cable (Copper Wire)
+        total_dedicated_cable_length += router._calculate_path_length(path)
+        
+        # 2. Collect unique edges to measure the physical trench footprint (Infrastructure)
         for i in range(len(path) - 1):
             unique_edges.add(tuple(sorted((path[i], path[i+1]))))
 
-    total_infrastructure_length = sum(router.edges[e] for e in unique_edges)
+    # Calculate the total length of just the shared infrastructure
+    total_infrastructure_trench_length = sum(router.edges[e] for e in unique_edges)
 
+    # Calculate Sinuosity (Straightness)
     sinuosity_scores = []
     for (src, tgt), path in all_routes.items():
         if len(path) < 2:
@@ -296,6 +306,7 @@ def evaluate_routing_performance(all_routes, router):
 
     avg_sinuosity = np.mean(sinuosity_scores) if sinuosity_scores else 0
 
+    # Calculate Bending Cost (Turns)
     total_bending_cost = 0
     for path in all_routes.values():
         for i in range(len(path) - 2):
@@ -303,10 +314,12 @@ def evaluate_routing_performance(all_routes, router):
             total_bending_cost += (1.0 - cosine)
 
     return {
-        "Total_Copper_Length": round(total_infrastructure_length, 2),
+        "Total_Dedicated_Cable_Length": round(total_dedicated_cable_length, 2),
+        "Total_Infrastructure_Trench_Length": round(total_infrastructure_trench_length, 2),
         "Avg_Path_Sinuosity": round(avg_sinuosity, 3),
         "Total_Bending_Cost": round(total_bending_cost, 2)
     }
+
 
 def plot_global_network(graph_data1, all_routes, connection_pairs):
     fig, ax = plt.subplots(figsize=(15, 10))
@@ -351,9 +364,9 @@ def run_aco_grid_search(graph_data1, subset_pairs, param_grid):
     for i, params in enumerate(param_combinations):
         print(f"--- Run {i+1}/{len(param_combinations)} | Testing Params: {params} ---")
 
-        alpha = params.get('alpha', 1.0)
-        beta = params.get('beta', 2.0)
-        gamma = params.get('gamma', 1.5)
+        alpha = params.get('alpha', 3.0)
+        beta = params.get('beta', 3.0)
+        gamma = params.get('gamma', 3.5)
         n_ants = 20
         n_iterations = 15
 
@@ -427,9 +440,9 @@ if 'graph_data1' in locals():
         print("="*50)
 
         param_grid = {
-            'alpha': [1.4],
-            'beta': [0.8],
-            'gamma': [2.0],
+            'alpha': [0.8],
+            'beta': [10.0],
+            'gamma': [2.5],
         }
 
         df_grid_results = run_aco_grid_search(graph_data1, connection_pairs, param_grid)
@@ -452,8 +465,8 @@ if 'graph_data1' in locals():
 
         best_routes = best_router.run_global_routing(
             connection_pairs,
-            n_ants=20,
-            n_iterations=15,
+            n_ants=10,
+            n_iterations=16,
             visualize_progress=True # Keep false for the final full run!
         )
 
