@@ -23,7 +23,7 @@ except FileNotFoundError:
 # 2. ACO ROUTER CLASS
 # ==========================================
 class ACO_Router:
-    def __init__(self, graph_data1, alpha=0.8, beta=2.8, rho=0.1, Q=100, gamma=2.0):
+    def __init__(self, graph_data1, alpha=0.01, beta=1, rho=0.1, Q=50, gamma=2.0):
         self.graph = graph_data1
         self.alpha = alpha
         self.beta = beta
@@ -87,7 +87,7 @@ class ACO_Router:
     def _apply_heavy_reinforcement(self, path):
         for i in range(len(path) - 1):
             edge = tuple(sorted((path[i], path[i+1])))
-            self.pheromones[edge] += 5.0
+            self.pheromones[edge] += 1.0
 
     def _build_adjacency(self):
         adj = {}
@@ -173,7 +173,7 @@ class ACO_Router:
         current = start
 
         # Limite élargie car la fourmi peut faire des détours avant d'effacer ses boucles
-        max_steps = len(self.edges) * 200
+        max_steps = len(self.edges) * 3
         for _ in range(max_steps):
             next_node = self._select_next_node(prev, current)
 
@@ -440,9 +440,9 @@ if 'graph_data1' in locals():
         print("="*50)
 
         param_grid = {
-            'alpha': [0.8],
-            'beta': [10.0],
-            'gamma': [2.5],
+            'alpha': [0.01],
+            'beta': [1.0],
+            'gamma': [2],
         }
 
         df_grid_results = run_aco_grid_search(graph_data1, connection_pairs, param_grid)
