@@ -149,7 +149,7 @@ if __name__ == "__main__":
         except nx.NetworkXNoPath: continue
 
     print("ACO...")
-    params = {'alpha': 1.2, 'beta': 3.0, 'gamma': 2.5, 'n_ants': 20, 'n_iterations': 20}
+    params = {'alpha': 1.0, 'beta': 1.5, 'gamma': 2.0, 'n_ants': 20, 'n_iterations': 20}
     worker_task = functools.partial(route_individual_pair, graph_gdf_segments=graph_data1.gdf_segments,
                                     angle_map=angle_map, edges_dict=edges_dict, params=params, 
                                     initial_pheromones=global_init_pheromones)
