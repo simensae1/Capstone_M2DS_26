@@ -22,11 +22,11 @@ def route_individual_pair(pair, graph_gdf_segments, angle_map, edges_dict, param
     source_node, machine_node = pair
     
     # Hyperparameters
-    alpha = params.get('alpha', 1.0)
+    alpha = params.get('alpha', 1.2)
     beta = params.get('beta', 2.0)
     gamma = params.get('gamma', 1.5)
-    n_ants = params.get('n_ants', 15)
-    n_iterations = params.get('n_iterations', 10)
+    n_ants = params.get('n_ants', 30)
+    n_iterations = params.get('n_iterations', 35)
     
     # Local Pheromone Map for this specific pair
     local_pheromones = {edge: 1.0 for edge in edges_dict.keys()}
@@ -43,7 +43,7 @@ def route_individual_pair(pair, graph_gdf_segments, angle_map, edges_dict, param
             current = machine_node
             
             # Max steps to prevent infinite loops
-            for _ in range((len(edges_dict) // 2)*10):
+            for _ in range((len(edges_dict))*10):
                 # Get neighbors
                 neighbors = []
                 for edge, dist in edges_dict.items():
@@ -139,6 +139,23 @@ def evaluate_performance(all_routes, edges_dict, angle_map, graph_data):
         "Avg_Sinuosity": round(np.mean(sinuosity), 3) if sinuosity else 0
     }
 
+def display_connection_stats(all_routes, connection_pairs):
+    """
+    Calculates and prints the success rate of the ant routing.
+    """
+    total_pairs = len(connection_pairs)
+    connected_pairs = len(all_routes)
+    failed_pairs = total_pairs - connected_pairs
+    success_rate = (connected_pairs / total_pairs) * 100 if total_pairs > 0 else 0
+
+    print("\n" + "="*30)
+    print("📈 CONNECTION STATISTICS")
+    print("="*30)
+    print(f"Total Pairs Attempted : {total_pairs}")
+    print(f"Successfully Connected: {connected_pairs}")
+    print(f"Failed Connections    : {failed_pairs}")
+    print(f"Success Rate          : {success_rate:.2f}%")
+    print("="*30)
 
 def plot_final_network(graph_data1, all_routes, connection_pairs):
     """
@@ -240,7 +257,7 @@ if __name__ == "__main__":
     # EXECUTE IN PARALLEL
     all_routes = {}
     worker_task = functools.partial(
-        route_individual_pair, 
+        route_individual_pair,
         graph_gdf_segments=graph_data1.gdf_segments,
         angle_map=angle_map,
         edges_dict=edges_dict,
@@ -254,9 +271,12 @@ if __name__ == "__main__":
         if path:
             all_routes[pair] = path
 
+    # --- NEW: Display the Connection Stats ---
+    display_connection_stats(all_routes, connection_pairs)
+
     # Results
     metrics = evaluate_performance(all_routes, edges_dict, angle_map, graph_data1)
-    print("\n--- FINAL RESULTS ---")
+    print("\n--- FINAL METRICS ---")
     for k, v in metrics.items():
         print(f"{k}: {v}")
 
