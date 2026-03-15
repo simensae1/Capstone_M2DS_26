@@ -8,6 +8,7 @@ import itertools
 from concurrent.futures import ProcessPoolExecutor
 import functools
 from IPython.display import clear_output
+from collections import Counter
 import graph_data
 
 # ==========================================
@@ -42,7 +43,7 @@ def route_individual_pair(pair, graph_gdf_segments, angle_map, edges_dict, param
             current = machine_node
             
             # Max steps to prevent infinite loops
-            for _ in range(len(edges_dict) // 2):
+            for _ in range((len(edges_dict) // 2)*10):
                 # Get neighbors
                 neighbors = []
                 for edge, dist in edges_dict.items():
@@ -103,7 +104,7 @@ def route_individual_pair(pair, graph_gdf_segments, angle_map, edges_dict, param
     return pair, best_path, best_dist
 
 # ==========================================
-# 2. EVALUATION & HELPER FUNCTIONS
+# 2. EVALUATION & VISUALIZATION FUNCTIONS
 # ==========================================
 def evaluate_performance(all_routes, edges_dict, angle_map, graph_data):
     total_cable = 0
@@ -138,6 +139,74 @@ def evaluate_performance(all_routes, edges_dict, angle_map, graph_data):
         "Avg_Sinuosity": round(np.mean(sinuosity), 3) if sinuosity else 0
     }
 
+
+def plot_final_network(graph_data1, all_routes, connection_pairs):
+    """
+    Plots the final network, showing line thickness based on how many 
+    cables pass through a specific trench.
+    """
+    # 1. Count how many times each edge is used across all routes
+    edge_counts = Counter()
+    for path in all_routes.values():
+        if not path or len(path) < 2:
+            continue
+        for i in range(len(path) - 1):
+            edge = tuple(sorted((path[i], path[i+1])))
+            edge_counts[edge] += 1
+
+    # 2. Map these counts back to the GeoDataFrame
+    counts_list = []
+    for _, row in graph_data1.gdf_segments.iterrows():
+        edge = tuple(sorted((int(row['i']), int(row['j']))))
+        counts_list.append(edge_counts.get(edge, 0))
+    
+    graph_data1.gdf_segments['cable_count'] = counts_list
+
+    # 3. Setup Plot
+    fig, ax = plt.subplots(figsize=(16, 10))
+
+    # Base Network (Unused trenches in light gray)
+    base_mask = graph_data1.gdf_segments['cable_count'] == 0
+    graph_data1.gdf_segments[base_mask].plot(ax=ax, color='lightgray', linewidth=0.6, alpha=0.5, zorder=1)
+
+    # Active Network (Red lines, thickness = number of cables)
+    used_mask = graph_data1.gdf_segments['cable_count'] > 0
+    if used_mask.any():
+        used_edges = graph_data1.gdf_segments[used_mask].copy()
+        # Scale linewidth based on density
+        max_cables = used_edges['cable_count'].max()
+        used_edges['lw'] = 1.0 + (used_edges['cable_count'] / max_cables) * 4.0
+        used_edges.plot(ax=ax, color='red', linewidth=used_edges['lw'], alpha=0.8, label='Active Trenches', zorder=2)
+
+    # 4. Plot Source and Machine Nodes
+    sources_ids = list(set([p[0] for p in connection_pairs]))
+    targets_ids = list(set([p[1] for p in connection_pairs]))
+
+    gdf_nodes_idx = graph_data1.gdf_nodes.set_index('node_id')
+
+    # Sources (Green Triangles)
+    src_geom = gdf_nodes_idx.loc[gdf_nodes_idx.index.intersection(sources_ids), 'geometry']
+    if not src_geom.empty:
+        ax.scatter(src_geom.x, src_geom.y, color='lime', s=150, marker='^', edgecolors='black', label='Sources', zorder=4)
+
+    # Machines (Blue Dots)
+    tgt_geom = gdf_nodes_idx.loc[gdf_nodes_idx.index.intersection(targets_ids), 'geometry']
+    if not tgt_geom.empty:
+        ax.scatter(tgt_geom.x, tgt_geom.y, color='blue', s=50, marker='o', edgecolors='white', label='Machines', zorder=3)
+
+    plt.title("Final Network Routing Density", fontsize=16, fontweight='bold')
+    plt.xlabel("Longitude")
+    plt.ylabel("Latitude")
+    
+    # Handle Legend avoiding duplicate labels from geopandas
+    handles, labels = ax.get_legend_handles_labels()
+    by_label = dict(zip(labels, handles))
+    ax.legend(by_label.values(), by_label.keys(), loc='best', framealpha=0.9)
+
+    plt.tight_layout()
+    plt.savefig("Final_Network_Heatmap.png", dpi=300, bbox_inches='tight')
+    plt.show()
+
 # ==========================================
 # 3. MAIN EXECUTION
 # ==========================================
@@ -169,7 +238,6 @@ if __name__ == "__main__":
     print(f"🚀 Starting Parallel Routing for {len(connection_pairs)} pairs...")
 
     # EXECUTE IN PARALLEL
-    # This prevents the 'first colony bias' because every core is independent
     all_routes = {}
     worker_task = functools.partial(
         route_individual_pair, 
@@ -191,3 +259,7 @@ if __name__ == "__main__":
     print("\n--- FINAL RESULTS ---")
     for k, v in metrics.items():
         print(f"{k}: {v}")
+
+    # Visualizing the final output
+    print("\n🗺️ Generating the final network density plot...")
+    plot_final_network(graph_data1, all_routes, connection_pairs)

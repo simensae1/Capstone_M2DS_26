@@ -5,11 +5,14 @@ import pickle
 import matplotlib.pyplot as plt
 import networkx as nx
 import itertools
+import dataclass
 
 # 1. Load the data
 file_path = "Capstone_M2DS_26/dataclass/graph_data_exemple.pkl"
-with open(file_path, "rb") as f:
-    graph_data1 = pickle.load(f)
+# Make sure to replace this with your actual path if running outside your current directory
+try:
+    with open(file_path, "rb") as f:
+        graph_data1 = pickle.load(f)
 
 
 class ACO_Router:
