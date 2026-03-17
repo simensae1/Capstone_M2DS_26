@@ -297,25 +297,78 @@ if __name__ == "__main__":
     print(dijkstra_metrics)
     plot_network(graph_data1, dijkstra_routes, edges_dict_raw, title="Baseline: Dijkstra (Repaired Graph)", line_color='blue')
 
-    # --- ACO EXECUTION ---
-    print("\n🐜 Starting Ant Colony Optimization (ACO)...")
-    params = {'alpha': 1.0, 'beta': 1.0, 'gamma': 0.5, 'n_ants': 70, 'n_iterations': 100}
-    worker_task = functools.partial(route_individual_pair, graph_gdf_segments=graph_data1.gdf_segments,
-                                    angle_map=angle_map, edges_dict=edges_dict, params=params, 
-                                    initial_pheromones=global_init_pheromones)
+    import itertools
+    import pandas as pd
 
-    with ProcessPoolExecutor() as executor:
-        results = list(executor.map(worker_task, connection_pairs))
+    # --- ACO PARAMETER TUNING EXECUTION ---
+    print("\n🐜 Starting Ant Colony Optimization (ACO) Grid Search...")
 
-    all_routes = {p: path for p, path, d in results if path}
-    
-    print("\n--- FINAL RESULTS: ACO OPTIMIZED PATHS ---")
-    print(f"Result: {len(all_routes)}/{len(connection_pairs)} pairs connected.")
-    aco_metrics = evaluate_performance(all_routes, edges_dict, graph_data1)
-    print(aco_metrics)
-    
-    if dijkstra_metrics["Trench_m"] > 0:
-        savings = dijkstra_metrics["Trench_m"] - aco_metrics["Trench_m"]
-        print(f"💡 Trench Savings vs Dijkstra: {savings:.2f} meters")
+    # 1. Define the parameter grid you want to test
+    alphas = [0.5, 1.0, 1.5, 2.0]       # Pheromone importance
+    betas = [0.5, 1.0, 1.5, 2.0]        # Distance importance
+    gammas = [0.0, 0.5, 1.0]       # Angle (straightness) importance
+    n_ants = 70
+    n_iterations = 100
 
-    plot_network(graph_data1, all_routes, edges_dict_raw, title="Optimized Network (ACO Repaired)", line_color='red')
+    # Generate all combinations of alpha, beta, and gamma
+    param_grid = list(itertools.product(alphas, betas, gammas))
+    print(f"Total parameter combinations to test: {len(param_grid)}")
+
+    # List to store our metrics for the CSV
+    results_log = []
+
+    for a, b, g in param_grid:
+        print(f"\n▶️ Running ACO with Alpha: {a}, Beta: {b}, Gamma: {g}...")
+        
+        params = {'alpha': a, 'beta': b, 'gamma': g, 'n_ants': n_ants, 'n_iterations': n_iterations}
+        
+        # Set up the worker
+        worker_task = functools.partial(route_individual_pair, graph_gdf_segments=graph_data1.gdf_segments,
+                                        angle_map=angle_map, edges_dict=edges_dict, params=params, 
+                                        initial_pheromones=global_init_pheromones)
+
+        # Execute Multiprocessing
+        with ProcessPoolExecutor() as executor:
+            results = list(executor.map(worker_task, connection_pairs))
+
+        # Extract successful routes
+        all_routes = {p: path for p, path, d in results if path}
+        connected_count = len(all_routes)
+        
+        # Evaluate
+        aco_metrics = evaluate_performance(all_routes, edges_dict, graph_data1)
+        
+        # Calculate savings compared to Dijkstra
+        savings = 0
+        if dijkstra_metrics.get("Trench_m", 0) > 0:
+            savings = dijkstra_metrics["Trench_m"] - aco_metrics["Trench_m"]
+            
+        print(f"   Result: {connected_count}/{len(connection_pairs)} pairs connected.")
+        print(f"   Trench: {aco_metrics['Trench_m']}m (Savings: {savings:.2f}m)")
+
+        # Record data for CSV
+        results_log.append({
+            'Alpha': a,
+            'Beta': b,
+            'Gamma': g,
+            'Connected_Pairs': connected_count,
+            'Total_Cable_m': aco_metrics.get('Total_Cable_m', 0),
+            'Total_Trench_m': aco_metrics.get('Trench_m', 0),
+            'Trench_Savings_m': round(savings, 2)
+        })
+        
+        # Dynamic Plot Title
+        plot_title = f"ACO Network Layout (α={a}, β={b}, γ={g})"
+        
+        # Note: If your plot_network has plt.show(), it will pause the loop here until you close the plot window!
+        plot_network(graph_data1, all_routes, edges_dict_raw, title=plot_title, line_color='red')
+
+    # --- SAVE RESULTS TO CSV ---
+    df_results = pd.DataFrame(results_log)
+    csv_filename = "aco_tuning_results.csv"
+    df_results.to_csv(csv_filename, index=False)
+
+    print(f"\n✅ Grid search complete! Results saved to '{csv_filename}'.")
+    print("\nSummary of best runs:")
+    # Sort by lowest trench distance and print top 3
+    print(df_results.sort_values(by='Total_Trench_m').head(3))
