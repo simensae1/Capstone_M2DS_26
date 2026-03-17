@@ -224,7 +224,7 @@ if __name__ == "__main__":
 
     # --- ACO EXECUTION ---
     print("\n🐜 Starting Ant Colony Optimization (ACO)...")
-    params = {'alpha': 1.0, 'beta': 1.0, 'gamma': 0.5, 'n_ants': 70, 'n_iterations': 400}
+    params = {'alpha': 1.0, 'beta': 1.0, 'gamma': 0.5, 'n_ants': 70, 'n_iterations': 10}
     worker_task = functools.partial(route_individual_pair, graph_gdf_segments=graph_data1.gdf_segments,
                                     angle_map=angle_map, edges_dict=edges_dict, params=params, 
                                     initial_pheromones=global_init_pheromones)
