@@ -112,7 +112,7 @@ def repair_graph_connectivity(G, edges_dict, connection_pairs, nodes_gdf):
     if not isolated_nodes:
         return G, edges_dict, lcc_nodes
 
-    print(f"\n📏 Analyzing and Repairing Connectivity for {len(isolated_nodes)} Isolated Nodes...")
+    print(f"\ Analyzing and Repairing Connectivity for {len(isolated_nodes)} Isolated Nodes...")
     lcc_list = list(lcc_nodes)
     lcc_geoms = nodes_idx.loc[lcc_list, 'geometry']
 
@@ -142,7 +142,7 @@ def repair_graph_connectivity(G, edges_dict, connection_pairs, nodes_gdf):
 
     # --- ISOLATION ANALYSIS METRICS ---
     if distances_list:
-        print(f"⚠️ Found {len(isolated_nodes)} isolated machines/sources.")
+        print(f"Found {len(isolated_nodes)} isolated machines/sources.")
         print(f"   ➔ Minimum gap bridged: {min(distances_list):.2f} meters")
         print(f"   ➔ Maximum gap bridged: {max(distances_list):.2f} meters")
         print(f"   ➔ Average gap bridged: {np.mean(distances_list):.2f} meters")
@@ -259,8 +259,8 @@ if __name__ == "__main__":
     # Extract raw pairs from cables
     raw_pairs = [(int(r['tenant']), int(r['aboutissant'])) for _, r in graph_data1.df_cables.dropna().iterrows()]
 
-    print(f"🔍 Original graph has {G_full.number_of_nodes()} nodes.")
-    print(f"📉 Total connection pairs to process: {len(raw_pairs)}")
+    print(f"Original graph has {G_full.number_of_nodes()} nodes.")
+    print(f"Total connection pairs to process: {len(raw_pairs)}")
 
     # --- APPLY GRAPH REPAIR & ISOLATION ANALYSIS ---
     G_repaired, edges_dict, final_lcc = repair_graph_connectivity(G_full, edges_dict_raw, raw_pairs, graph_data1.gdf_nodes)
@@ -271,7 +271,7 @@ if __name__ == "__main__":
         if src in final_lcc and tgt in final_lcc:
             connection_pairs.append((src, tgt))
 
-    print(f"\n✅ Ready to route: {len(connection_pairs)}/{len(raw_pairs)} pairs reachable after repair.")
+    print(f"\Ready to route: {len(connection_pairs)}/{len(raw_pairs)} pairs reachable after repair.")
 
     # Filter angle map for valid nodes
     angle_map = {(int(r['i']), int(r['j']), int(r['k'])): r['abs_cosine']
@@ -279,7 +279,7 @@ if __name__ == "__main__":
                  if all(n in final_lcc for n in [int(r['i']), int(r['j']), int(r['k'])])}
 
     # --- DIJKSTRA INIT ---
-    print("\n🧠 Computing Dijkstra Shortest Paths & Initializing Pheromones...")
+    print("\ Computing Dijkstra Shortest Paths & Initializing Pheromones...")
     dijkstra_routes = {}
     global_init_pheromones = {e: 1.0 for e in edges_dict.keys()}
 
@@ -301,7 +301,7 @@ if __name__ == "__main__":
     plot_network(graph_data1, dijkstra_routes, edges_dict_raw, title="Baseline: Dijkstra (Repaired Graph)", line_color='blue')
 
     # --- ACO PARAMETER TUNING EXECUTION ---
-    print("\n🐜 Starting Ant Colony Optimization (ACO) Grid Search...")
+    print("\ Starting Ant Colony Optimization (ACO) Grid Search...")
 
     # 1. Define the parameter grid you want to test
     alphas = [0.5, 1.0, 1.5, 2.0]       # Pheromone importance
@@ -318,7 +318,7 @@ if __name__ == "__main__":
     results_log = []
 
     for a, b, g in param_grid:
-        print(f"\n▶️ Running ACO with Alpha: {a}, Beta: {b}, Gamma: {g}...")
+        print(f"\n Running ACO with Alpha: {a}, Beta: {b}, Gamma: {g}...")
 
         params = {'alpha': a, 'beta': b, 'gamma': g, 'n_ants': n_ants, 'n_iterations': n_iterations}
 
@@ -366,7 +366,7 @@ if __name__ == "__main__":
     csv_filename = "aco_tuning_results.csv"
     df_results.to_csv(csv_filename, index=False)
 
-    print(f"\n✅ Grid search complete! Results saved to '{csv_filename}'.")
+    print(f"\Grid search complete! Results saved to '{csv_filename}'.")
     print("\nSummary of best runs:")
     # Sort by lowest trench distance and print top 3
     print(df_results.sort_values(by='Total_Trench_m').head(3))
