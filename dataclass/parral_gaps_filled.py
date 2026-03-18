@@ -9,6 +9,8 @@ from concurrent.futures import ProcessPoolExecutor
 import functools
 from collections import Counter
 import graph_data
+import itertools
+import pandas as pd
 
 # ==========================================
 # 1. INDEPENDENT WORKER FUNCTION
@@ -74,7 +76,7 @@ def route_individual_pair(pair, graph_gdf_segments, angle_map, edges_dict, param
                     prev = current
                     current = next_node
 
-        for e in local_pheromones: 
+        for e in local_pheromones:
             local_pheromones[e] *= 0.9
         for p in iteration_paths:
             d = sum(edges_dict[tuple(sorted((p[i], p[i+1])))] for i in range(len(p)-1))
@@ -93,18 +95,18 @@ def route_individual_pair(pair, graph_gdf_segments, angle_map, edges_dict, param
 
 def repair_graph_connectivity(G, edges_dict, connection_pairs, nodes_gdf):
     """
-    Identifies nodes outside the LCC, logs isolation analysis (from Code 1), 
+    Identifies nodes outside the LCC, logs isolation analysis (from Code 1),
     and creates virtual edges to snap them to the nearest LCC node.
     """
     nodes_idx = nodes_gdf.set_index('node_id')
     lcc_nodes = max(nx.connected_components(G), key=len)
-    
+
     # Check all target nodes
     all_target_nodes = set()
     for src, tgt in connection_pairs:
         all_target_nodes.add(src)
         all_target_nodes.add(tgt)
-    
+
     # Identify which nodes are floating outside the main network
     isolated_nodes = all_target_nodes - lcc_nodes
     if not isolated_nodes:
@@ -113,38 +115,38 @@ def repair_graph_connectivity(G, edges_dict, connection_pairs, nodes_gdf):
     print(f"\n📏 Analyzing and Repairing Connectivity for {len(isolated_nodes)} Isolated Nodes...")
     lcc_list = list(lcc_nodes)
     lcc_geoms = nodes_idx.loc[lcc_list, 'geometry']
-    
+
     new_G = G.copy()
     new_edges = edges_dict.copy()
-    
+
     distances_list = []
 
     for node in isolated_nodes:
-        if node not in nodes_idx.index: 
+        if node not in nodes_idx.index:
             continue
-            
+
         point = nodes_idx.loc[node, 'geometry']
-        
+
         # Calculate distance to main network
         distances = lcc_geoms.distance(point)
         min_dist = distances.min()
         distances_list.append(min_dist)
-        
+
         nearest_node_id = distances.idxmin()
-        dist_val = max(min_dist, 0.1) # Prevent 0.0 distance routing issues
-        
+        dist_val = max(min_dist, 0.1)  # Prevent 0.0 distance routing issues
+
         # Add virtual bridge edge
         edge = tuple(sorted((node, nearest_node_id)))
         new_G.add_edge(*edge, weight=dist_val)
         new_edges[edge] = dist_val
-        
+
     # --- ISOLATION ANALYSIS METRICS ---
     if distances_list:
         print(f"⚠️ Found {len(isolated_nodes)} isolated machines/sources.")
         print(f"   ➔ Minimum gap bridged: {min(distances_list):.2f} meters")
         print(f"   ➔ Maximum gap bridged: {max(distances_list):.2f} meters")
         print(f"   ➔ Average gap bridged: {np.mean(distances_list):.2f} meters")
-        
+
     final_lcc = max(nx.connected_components(new_G), key=len)
     return new_G, new_edges, final_lcc
 
@@ -153,25 +155,27 @@ def evaluate_performance(all_routes, edges_dict, graph_data):
     total_cable = 0
     unique_edges = set()
     for path in all_routes.values():
-        if not path: continue
+        if not path:
+            continue
         total_cable += sum(edges_dict[tuple(sorted((path[i], path[i+1])))] for i in range(len(path)-1))
-        for i in range(len(path)-1): 
+        for i in range(len(path)-1):
             unique_edges.add(tuple(sorted((path[i], path[i+1]))))
-    
+
     return {
-        "Total_Cable_m": round(total_cable, 2), 
+        "Total_Cable_m": round(total_cable, 2),
         "Trench_m": round(sum(edges_dict[e] for e in unique_edges), 2)
     }
 
 
 def plot_network(graph_data, all_routes, edges_dict_raw, title="Network Layout", line_color='red'):
     """
-    Combined Plotting: Updates 'cable_count' on gdf_segments for real edges, 
+    Combined Plotting: Updates 'cable_count' on gdf_segments for real edges,
     plots 'virtual' bridges, and overlays source/machine nodes.
     """
     edge_counts = Counter()
     for path in all_routes.values():
-        if not path: continue
+        if not path:
+            continue
         for i in range(len(path)-1): 
             edge_counts[tuple(sorted((path[i], path[i+1])))] += 1
 
@@ -180,17 +184,17 @@ def plot_network(graph_data, all_routes, edges_dict_raw, title="Network Layout",
         lambda r: edge_counts.get(tuple(sorted((int(r['i']), int(r['j'])))), 0), axis=1)
 
     fig, ax = plt.subplots(figsize=(12, 8))
-    
+
     # 1. Plot base network in light gray
     graph_data.gdf_segments.plot(ax=ax, color='lightgray', linewidth=0.5, alpha=0.5, zorder=1)
-    
+
     # 2. Plot used segments
     used = graph_data.gdf_segments[graph_data.gdf_segments['cable_count'] > 0]
     max_cables = max(edge_counts.values()) if edge_counts else 1
-    
+
     if not used.empty:
         used.plot(ax=ax, color=line_color, linewidth=1 + (used['cable_count'] / max_cables * 5), zorder=2)
-        
+
     # 3. Plot virtual repaired edges (dotted orange lines)
     nodes_idx = graph_data.gdf_nodes.set_index('node_id')
     for (u, v), count in edge_counts.items():
@@ -200,28 +204,28 @@ def plot_network(graph_data, all_routes, edges_dict_raw, title="Network Layout",
                 p2 = nodes_idx.loc[v, 'geometry']
                 linewidth = 1 + (count / max_cables * 5)
                 ax.plot([p1.x, p2.x], [p1.y, p2.y], color='orange', linestyle='--', linewidth=linewidth, zorder=3)
-                
+
     # ---------------------------------------------------------
     # 4. PLOT SOURCES AND MACHINES (NEW)
     # ---------------------------------------------------------
     # Extract unique source and machine IDs from the pairs
     sources_ids = set(pair[0] for pair in all_routes.keys())
     machines_ids = set(pair[1] for pair in all_routes.keys())
-    
+
     # Get Geodataframes for these specific nodes
     sources_gdf = graph_data.gdf_nodes[graph_data.gdf_nodes['node_id'].isin(sources_ids)]
     machines_gdf = graph_data.gdf_nodes[graph_data.gdf_nodes['node_id'].isin(machines_ids)]
-    
+
     # Plot Sources (Green Triangles)
     if not sources_gdf.empty:
         sources_gdf.plot(ax=ax, color='lime', marker='^', markersize=100, 
                          edgecolor='black', label='Sources (Tenant)', zorder=4)
-        
+
     # Plot Machines (Magenta Circles)
     if not machines_gdf.empty:
-        machines_gdf.plot(ax=ax, color='magenta', marker='o', markersize=50, 
+        machines_gdf.plot(ax=ax, color='magenta', marker='o', markersize=50,
                           edgecolor='black', label='Machines (Aboutissant)', zorder=4)
-                          
+
     # Add a legend
     handles, labels = ax.get_legend_handles_labels()
     if handles:
@@ -233,8 +237,7 @@ def plot_network(graph_data, all_routes, edges_dict_raw, title="Network Layout",
     plt.ylabel("Latitude")
     plt.tight_layout()
     # Fixed to include extension so it saves successfully
-    plt.savefig(f"{title}.png", dpi=300, bbox_inches='tight') 
-    plt.show()
+    plt.savefig(f"{title}.png", dpi=300, bbox_inches='tight')
 
 
 # ==========================================
@@ -252,7 +255,7 @@ if __name__ == "__main__":
         G_full.add_edge(int(r['i']), int(r['j']), weight=r['length_m'])
 
     edges_dict_raw = {tuple(sorted((int(r['i']), int(r['j'])))): r['length_m'] for _, r in graph_data1.gdf_segments.iterrows()}
-    
+
     # Extract raw pairs from cables
     raw_pairs = [(int(r['tenant']), int(r['aboutissant'])) for _, r in graph_data1.df_cables.dropna().iterrows()]
 
@@ -267,19 +270,19 @@ if __name__ == "__main__":
     for src, tgt in raw_pairs:
         if src in final_lcc and tgt in final_lcc:
             connection_pairs.append((src, tgt))
-    
+
     print(f"\n✅ Ready to route: {len(connection_pairs)}/{len(raw_pairs)} pairs reachable after repair.")
 
     # Filter angle map for valid nodes
-    angle_map = {(int(r['i']), int(r['j']), int(r['k'])): r['abs_cosine'] 
-                 for _, r in graph_data1.df_angles.iterrows() 
+    angle_map = {(int(r['i']), int(r['j']), int(r['k'])): r['abs_cosine']
+                 for _, r in graph_data1.df_angles.iterrows()
                  if all(n in final_lcc for n in [int(r['i']), int(r['j']), int(r['k'])])}
 
     # --- DIJKSTRA INIT ---
     print("\n🧠 Computing Dijkstra Shortest Paths & Initializing Pheromones...")
     dijkstra_routes = {}
     global_init_pheromones = {e: 1.0 for e in edges_dict.keys()}
-    
+
     for src, tgt in connection_pairs:
         try:
             d_path = nx.shortest_path(G_repaired, source=src, target=tgt, weight='weight')
@@ -287,7 +290,7 @@ if __name__ == "__main__":
             for i in range(len(d_path)-1):
                 edge = tuple(sorted((d_path[i], d_path[i+1])))
                 global_init_pheromones[edge] += 15.0
-        except nx.NetworkXNoPath: 
+        except nx.NetworkXNoPath:
             continue
 
     # Evaluate and Plot Dijkstra Baseline
@@ -296,9 +299,6 @@ if __name__ == "__main__":
     print(f"Result: {len(dijkstra_routes)}/{len(connection_pairs)} pairs connected.")
     print(dijkstra_metrics)
     plot_network(graph_data1, dijkstra_routes, edges_dict_raw, title="Baseline: Dijkstra (Repaired Graph)", line_color='blue')
-
-    import itertools
-    import pandas as pd
 
     # --- ACO PARAMETER TUNING EXECUTION ---
     print("\n🐜 Starting Ant Colony Optimization (ACO) Grid Search...")
@@ -319,12 +319,12 @@ if __name__ == "__main__":
 
     for a, b, g in param_grid:
         print(f"\n▶️ Running ACO with Alpha: {a}, Beta: {b}, Gamma: {g}...")
-        
+
         params = {'alpha': a, 'beta': b, 'gamma': g, 'n_ants': n_ants, 'n_iterations': n_iterations}
-        
+
         # Set up the worker
         worker_task = functools.partial(route_individual_pair, graph_gdf_segments=graph_data1.gdf_segments,
-                                        angle_map=angle_map, edges_dict=edges_dict, params=params, 
+                                        angle_map=angle_map, edges_dict=edges_dict, params=params,
                                         initial_pheromones=global_init_pheromones)
 
         # Execute Multiprocessing
@@ -334,10 +334,10 @@ if __name__ == "__main__":
         # Extract successful routes
         all_routes = {p: path for p, path, d in results if path}
         connected_count = len(all_routes)
-        
+
         # Evaluate
         aco_metrics = evaluate_performance(all_routes, edges_dict, graph_data1)
-        
+
         # Calculate savings compared to Dijkstra
         savings = 0
         if dijkstra_metrics.get("Trench_m", 0) > 0:
@@ -356,11 +356,9 @@ if __name__ == "__main__":
             'Total_Trench_m': aco_metrics.get('Trench_m', 0),
             'Trench_Savings_m': round(savings, 2)
         })
-        
+
         # Dynamic Plot Title
         plot_title = f"ACO Network Layout (α={a}, β={b}, γ={g})"
-        
-        # Note: If your plot_network has plt.show(), it will pause the loop here until you close the plot window!
         plot_network(graph_data1, all_routes, edges_dict_raw, title=plot_title, line_color='red')
 
     # --- SAVE RESULTS TO CSV ---
